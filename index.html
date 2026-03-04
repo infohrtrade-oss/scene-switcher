@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scene Switcher - Cinematic Edition</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0a0f;
+            color: #eee;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+        }
+
+        /* --- Cinematic Color Transition --- */
+        #transitionOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9999;
+            pointer-events: none;
+            opacity: 0;
+            background: linear-gradient(45deg, #ff00cc, #3333ff, #00ccff, #ff00cc);
+            background-size: 400% 400%;
+            mix-blend-mode: overlay;
+            transition: opacity 0.3s ease;
+        }
+
+        #transitionOverlay.active {
+            opacity: 1;
+            animation: gradientShift 1.25s ease infinite, wipeEffect 1.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        @keyframes wipeEffect {
+            0% { clip-path: circle(0% at 50% 50%); opacity: 0; }
+            50% { clip-path: circle(150% at 50% 50%); opacity: 0.8; }
+            100% { clip-path: circle(150% at 50% 50%); opacity: 0; }
+        }
+
+        /* --- Layout --- */
+        .center-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #0f0f1e;
+            position: relative;
+            min-width: 0;
+            order: 1;
+        }
+        .toolbar {
+            background: #16213e;
+            padding: 10px 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-bottom: 2px solid #0f3460;
+            flex-shrink: 0;
+            justify-content: space-between;
+        }
+
+        .display-wrapper {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        .display-screen {
+            background: #000;
+            position: relative;
+            width: 1000px;
+            height: 750px;
+            max-width: 100%;
+            max-height: 100%;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            border: 2px solid #333;
+            overflow: hidden;
+        }
+
+        /* --- Right Side: Panels --- */
+        .right-side-panels {
+            display: flex;
+            flex-direction: column;
+            width: 300px;
+            order: 2;
+            flex-shrink: 0;
+        }
+
+        .left-panel, .right-panel {
+            flex: 1;
+            background: #16213e;
+            border-left: 2px solid #0f3460;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            overflow-y: auto;
+            min-height: 0;
+        }
+        .left-panel { border-bottom: 2px solid #0f3460; }
+        
+        .panel-header {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #e94560;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .source-item {
+            background: #0f3460;
+            margin-bottom: 6px;
+            padding: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .source-item:hover { background: #1a4a7a; transform: translateX(3px); }
+        .source-item.active {
+            border-color: #e94560;
+            background: #1a4a7a;
+            box-shadow: 0 0 10px rgba(233, 69, 96, 0.3);
+        }
+        .source-item.background { border-left: 3px solid #4ecca3; }
+
+        .source-number {
+            background: #e94560;
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 10px;
+            flex-shrink: 0;
+        }
+
+        .source-info { flex: 1; min-width: 0; }
+        .source-name {
+            font-weight: 600;
+            margin-bottom: 2px;
+            font-size: 11px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .source-type {
+            font-size: 9px;
+            color: #aaa;
+            text-transform: uppercase;
+            background: rgba(0,0,0,0.3);
+            padding: 1px 4px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+        .bg-label {
+            font-size: 9px;
+            color: #4ecca3;
+            margin-left: 4px;
+            font-weight: bold;
+        }
+
+        .source-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            align-items: flex-end;
+        }
+        
+        .visibility-toggle { display: flex; align-items: center; gap: 3px; font-size: 10px; }
+        .visibility-toggle input { cursor: pointer; }
+
+        .ctrl-btn {
+            padding: 2px 6px;
+            background: #16213e;
+            border: 1px solid #e94560;
+            color: #e94560;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 9px;
+            font-weight: bold;
+            transition: all 0.2s;
+            min-width: 50px;
+            text-align: center;
+        }
+        .ctrl-btn:hover { background: #e94560; color: white; }
+        .ctrl-btn.active { background: #e94560; color: white; }
+
+        .add-source-btn {
+            width: 100%;
+            padding: 8px;
+            background: #e94560;
+            border: none;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 8px;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .add-source-btn:hover { background: #ff6b6b; transform: translateY(-1px); }
+
+        .scene-item {
+            background: #0f3460;
+            margin-bottom: 6px;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+            position: relative;
+        }
+        .scene-item:hover { background: #1a4a7a; transform: translateX(-3px); }
+        .scene-item.active { 
+            background: #e94560; 
+            border-left-color: #fff; 
+            box-shadow: 0 0 20px rgba(233, 69, 96, 0.6);
+        }
+
+        .add-scene-btn {
+            width: 100%;
+            padding: 8px;
+            background: #e94560;
+            border: none;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 8px;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .add-scene-btn:hover { background: #ff6b6b; transform: translateY(-1px); }
+
+        .playback-controls {
+            background: rgba(22, 33, 62, 0.95);
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #e94560;
+            margin-top: 10px;
+        }
+        .playback-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: #e94560;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .playback-btn:hover { background: #ff6b6b; transform: scale(1.1); }
+
+        /* --- Save Button --- */
+        .save-state-btn {
+            background: #4ecca3;
+            color: #0f0f1e;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .save-state-btn:hover { background: #3dbb94; transform: scale(1.05); }
+        .save-state-btn.saved { background: #2ecc71; }
+
+        /* --- Media Overlays --- */
+        #backgroundContainer, #overlayContainer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        }
+        #backgroundContainer { z-index: 1; }
+        #overlayContainer { z-index: 10; }
+
+        .media-overlay {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border: 2px solid transparent;
+            box-sizing: border-box;
+            overflow: hidden;
+            background: transparent;
+            z-index: 10;
+            transition: box-shadow 0.2s, border-color 0.2s;
+            cursor: grab;
+        }
+        .media-overlay:active { cursor: grabbing; }
+        
+        .media-overlay.background {
+            width: 100%; height: 100%; z-index: 1;
+            cursor: default;
+            transform: translateZ(0);
+            backface-visibility: hidden;
+        }
+        .media-overlay.background:active { cursor: default; }
+        
+        .media-overlay:not(.background) { will-change: left, top; }
+        
+        .media-overlay.active {
+            border-color: #e94560;
+            box-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+            z-index: 100;
+        }
+        .media-overlay.hidden { display: none; }
+
+        .media-overlay video {
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            display: block;
+        }
+        
+        .media-overlay img {
+            width: 100%; 
+            height: 100%; 
+            object-fit: contain; 
+            display: block;
+            background: transparent;
+        }
+        
+        .media-overlay.background video { pointer-events: none; transform: translateZ(0); }
+
+        /* Handles */
+        .overlay-handle {
+            position: absolute;
+            width: 12px; height: 12px;
+            background: #e94560;
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.2s, transform 0.2s;
+            z-index: 15;
+            border: 2px solid #fff;
+        }
+        .media-overlay:hover .overlay-handle, .media-overlay.active .overlay-handle { opacity: 1; }
+        .overlay-handle:hover { transform: scale(1.3); background: #ff6b6b; }
+        
+        .overlay-handle.nw { top: -6px; left: -6px; cursor: nw-resize; }
+        .overlay-handle.ne { top: -6px; right: -6px; cursor: ne-resize; }
+        .overlay-handle.sw { bottom: -6px; left: -6px; cursor: sw-resize; }
+        .overlay-handle.se { bottom: -6px; right: -6px; cursor: se-resize; }
+        .overlay-handle.n { top: -6px; left: 50%; transform: translateX(-50%); cursor: n-resize; width: 20px; height: 10px; border-radius: 5px; }
+        .overlay-handle.s { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: s-resize; width: 20px; height: 10px; border-radius: 5px; }
+        .overlay-handle.w { left: -6px; top: 50%; transform: translateY(-50%); cursor: w-resize; width: 10px; height: 20px; border-radius: 5px; }
+        .overlay-handle.e { right: -6px; top: 50%; transform: translateY(-50%); cursor: e-resize; width: 10px; height: 20px; border-radius: 5px; }
+
+        .size-label {
+            position: absolute;
+            bottom: -24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #4ecca3;
+            color: #1a1a2e;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 11;
+        }
+        .media-overlay:hover .size-label, .media-overlay.resizing .size-label { opacity: 1; }
+
+        /* --- Modal & Utils --- */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: #16213e; padding: 30px; border-radius: 12px; min-width: 400px; border: 2px solid #e94560; }
+        .modal-title { font-size: 20px; margin-bottom: 20px; color: #e94560; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-size: 14px; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; background: #0f3460; border: 1px solid #333; color: white; border-radius: 6px; }
+        .modal-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+        .btn-primary { padding: 10px 20px; background: #e94560; border: none; color: white; border-radius: 6px; cursor: pointer; }
+        .btn-secondary { padding: 10px 20px; background: #333; border: none; color: white; border-radius: 6px; cursor: pointer; }
+        .hidden-input { display: none; }
+        .delete-btn {
+            position: absolute; top: 3px; right: 3px;
+            background: #ff4444; border: none; color: white;
+            width: 18px; height: 18px; border-radius: 50%;
+            cursor: pointer; font-size: 12px; display: none; z-index: 10;
+            line-height: 1;
+        }
+        .source-item:hover .delete-btn, .scene-item:hover .delete-btn { display: block; }
+        .global-controls { margin-top: 10px; padding-top: 10px; border-top: 2px solid #0f3460; }
+        .global-btn {
+            width: 100%; padding: 6px; margin-bottom: 4px;
+            background: #0f3460; border: 1px solid #4ecca3;
+            color: #4ecca3; border-radius: 4px; cursor: pointer; font-size: 10px;
+        }
+        .global-btn:hover { background: #4ecca3; color: #1a1a2e; }
+        
+        .display-empty { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #666; text-align: center; z-index: 0; }
+    </style>
+</head>
+<body>
+
+    <!-- Cinematic Transition Overlay -->
+    <div id="transitionOverlay"></div>
+
+    <!-- Left Side: Display Screen -->
+    <div class="center-area" id="centerArea">
+        <div class="toolbar">
+            <div id="statusText" style="font-size: 12px; color: #888;">Ready</div>
+            <button class="save-state-btn" id="saveStateBtn" onclick="manualSaveState()" title="Save Current Layout">
+                <span>💾</span> Save State
+            </button>
+        </div>
+        
+        <div class="display-wrapper">
+            <div class="display-screen" id="displayScreen">
+                <div id="backgroundContainer"></div>
+                <div id="overlayContainer"></div>
+                <div class="display-empty" id="emptyState">
+                    <div>
+                        <div style="font-size: 48px; margin-bottom: 10px;">🎬</div>
+                        <div>Add media to scene</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Side: Panels -->
+    <div class="right-side-panels">
+        
+        <!-- Sources Panel (Top) -->
+        <div class="left-panel">
+            <div class="panel-header">📁 Sources</div>
+            <div id="sourcesList">
+                <div style="text-align: center; color: #666; padding: 20px;">
+                    <div style="font-size: 30px;">🎬</div>
+                    <div style="font-size: 11px;">No sources</div>
+                </div>
+            </div>
+            <button class="add-source-btn" onclick="document.getElementById('fileInput').click()">+ Add Media</button>
+            <input type="file" id="fileInput" class="hidden-input" accept="video/*,image/*,.gif" multiple onchange="handleFiles(event)">
+            
+            <div class="global-controls">
+                <div style="font-size: 10px; color: #888; margin-bottom: 6px;">Global Controls</div>
+                <button class="global-btn" onclick="showAllSources()">Show All</button>
+                <button class="global-btn" onclick="hideAllSources()">Hide All</button>
+                <button class="global-btn" onclick="resetAllPositions()">Reset Positions</button>
+            </div>
+        </div>
+
+        <!-- Scenes Panel (Bottom) -->
+        <div class="right-panel">
+            <div class="panel-header">🎭 Scenes</div>
+            <div class="scene-list" id="scenesList"></div>
+            <button class="add-scene-btn" onclick="showModal()">+ New Scene</button>
+            <div class="playback-controls">
+                <button class="playback-btn" onclick="playAll()" title="Play All (Space)">▶</button>
+                <button class="playback-btn" onclick="pauseAll()" title="Pause All (P)">⏸</button>
+                <button class="playback-btn" onclick="stopAll()" title="Stop All (S)">⏹</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal" id="sceneModal">
+        <div class="modal-content">
+            <div class="modal-title">Create New Scene</div>
+            <div class="form-group">
+                <label>Scene Name</label>
+                <input type="text" id="sceneNameInput" placeholder="Enter name..." autofocus>
+            </div>
+            <div class="form-group">
+                <label>Copy From Existing Scene (Optional)</label>
+                <select id="copySceneSelect">
+                    <option value="">-- Start Empty --</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn-primary" onclick="createScene()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const KEYBOARD_MAP = "123456789QWERTYUIOPASDFGHJKLZXCVBNM";
+        
+        // --- State ---
+        let scenes = [];
+        let currentScene = 0;
+        let activeSource = null;
+        
+        // Animation/Interaction State
+        let isDragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+        let animationFrame = null;
+        let lastTime = 0;
+
+        // --- Initialization ---
+        window.onload = function() {
+            loadData();
+            if (scenes.length === 0) {
+                scenes.push({ id: Date.now(), name: "Scene 1", sources: [] });
+            }
+            renderScenes();
+            renderSources();
+            renderMedia();
+            setupGlobalMouseHandlers();
+            setupKeyboardShortcuts();
+            switchScene(0, false);
+            updateStatus();
+        };
+
+        // --- Data Management (Persistent Save) ---
+        function saveData() {
+            localStorage.setItem('sceneSwitcherData_v2', JSON.stringify({ scenes, currentScene }));
+        }
+
+        function loadData() {
+            const saved = localStorage.getItem('sceneSwitcherData_v2');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    scenes = data.scenes || [];
+                    currentScene = data.currentScene || 0;
+                    // Ensure all properties exist for backwards compatibility
+                    scenes.forEach(scene => {
+                        scene.sources.forEach(s => {
+                            if (s.speed === undefined) s.speed = 2;
+                            if (s.direction === undefined) s.direction = 1;
+                            if (s.moving === undefined) s.moving = false;
+                        });
+                    });
+                } catch(e) { 
+                    console.error("Failed to load save data", e);
+                    scenes = []; 
+                }
+            }
+        }
+
+        // Manual Save State Button Logic
+        function manualSaveState() {
+            saveData();
+            const btn = document.getElementById('saveStateBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span>✅</span> Saved!';
+            btn.classList.add('saved');
+            updateStatus('State Saved');
+            
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.classList.remove('saved');
+                updateStatus();
+            }, 2000);
+        }
+
+        // --- Cinematic Transition ---
+        function triggerTransition(callback) {
+            const overlay = document.getElementById('transitionOverlay');
+            overlay.classList.add('active');
+
+            // Wait for animation to finish (1.25s)
+            setTimeout(() => {
+                overlay.classList.remove('active');
+                if (callback) callback();
+            }, 1250);
+        }
+
+        // --- Helpers ---
+        function getKeyForIndex(index) {
+            return KEYBOARD_MAP[index] || '';
+        }
+
+        function getCenterPosition(width, height) {
+            const display = document.getElementById('displayScreen');
+            return {
+                left: (display.offsetWidth - width) / 2,
+                top: (display.offsetHeight - height) / 2
+            };
+        }
+
+        // --- Scene Management ---
+        function showModal() {
+            const select = document.getElementById('copySceneSelect');
+            select.innerHTML = '<option value="">-- Start Empty --</option>';
+            
+            scenes.forEach((scene, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `Copy: ${scene.name}`;
+                select.appendChild(option);
+            });
+
+            document.getElementById('sceneModal').classList.add('active');
+            document.getElementById('sceneNameInput').value = '';
+            document.getElementById('sceneNameInput').focus();
+        }
+        function closeModal() { document.getElementById('sceneModal').classList.remove('active'); }
+        
+        function createScene() {
+            const name = document.getElementById('sceneNameInput').value.trim();
+            const copyIndex = document.getElementById('copySceneSelect').value;
+            
+            if (!name) return;
+
+            let newSources = [];
+            
+            // If user selected a scene to copy
+            if (copyIndex !== "") {
+                const sourceScene = scenes[parseInt(copyIndex)];
+                // Deep copy sources to avoid reference issues
+                newSources = JSON.parse(JSON.stringify(sourceScene.sources));
+                // Regenerate IDs for the new copies to avoid conflicts
+                newSources.forEach(s => s.id = Date.now() + Math.random());
+            }
+
+            const newScene = { 
+                id: Date.now(), 
+                name: name, 
+                sources: newSources 
+            };
+
+            scenes.push(newScene);
+            saveData();
+            renderScenes();
+            closeModal();
+            
+            // Switch to new scene with transition
+            const newIndex = scenes.length - 1;
+            triggerTransition(() => {
+                switchScene(newIndex, false);
+            });
+        }
+
+        function deleteScene(index, event) {
+            event.stopPropagation();
+            if (scenes.length <= 1) { alert("Need at least one scene"); return; }
+            
+            triggerTransition(() => {
+                scenes.splice(index, 1);
+                if (currentScene >= scenes.length) currentScene = scenes.length - 1;
+                if (currentScene === index) currentScene = 0;
+                saveData();
+                renderScenes();
+                switchScene(currentScene, false);
+            });
+        }
+
+        function renderScenes() {
+            const container = document.getElementById('scenesList');
+            container.innerHTML = '';
+            scenes.forEach((scene, index) => {
+                const div = document.createElement('div');
+                div.className = 'scene-item ' + (index === currentScene ? 'active' : '');
+                div.onclick = () => {
+                    if (index !== currentScene) {
+                        triggerTransition(() => {
+                            switchScene(index, false);
+                        });
+                    }
+                };
+                div.innerHTML = `
+                    <button class="delete-btn" onclick="deleteScene(${index}, event)">×</button>
+                    <div style="font-weight: 600; font-size: 12px;">${scene.name}</div>
+                    <div style="font-size: 10px; opacity: 0.8; margin-top: 2px;">${scene.sources.length} sources</div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function switchScene(index, withTransition = true) {
+            if (index < 0 || index >= scenes.length) return;
+            
+            currentScene = index;
+            activeSource = null;
+            renderScenes();
+            renderSources();
+            renderMedia();
+            updateStatus();
+        }
+
+        // --- Source Management ---
+        function handleFiles(event) {
+            const files = event.target.files;
+            if (!files.length) return;
+            const scene = scenes[currentScene];
+            
+            Array.from(files).forEach((file) => {
+                const url = URL.createObjectURL(file);
+                let type = 'image';
+                if (file.type.startsWith('video/')) type = 'video';
+                else if (file.type === 'image/gif') type = 'gif';
+                
+                const isFirst = scene.sources.length === 0;
+                let pos, w, h;
+                
+                if (isFirst) {
+                    const display = document.getElementById('displayScreen');
+                    w = display.offsetWidth;
+                    h = display.offsetHeight;
+                    pos = { left: 0, top: 0 };
+                } else {
+                    w = 200; 
+                    h = 200;
+                    pos = getCenterPosition(w, h);
+                }
+
+                scene.sources.push({
+                    id: Date.now() + Math.random(),
+                    name: file.name,
+                    type: type,
+                    url: url,
+                    visible: true,
+                    width: w,
+                    height: h,
+                    left: pos.left,
+                    top: pos.top,
+                    isBackground: isFirst,
+                    speed: 2,
+                    direction: 1,
+                    moving: false
+                });
+            });
+            
+            saveData();
+            renderSources();
+            renderMedia();
+            event.target.value = '';
+        }
+
+        function deleteSource(index, event) {
+            event.stopPropagation();
+            const scene = scenes[currentScene];
+            scene.sources.splice(index, 1);
+            
+            // If we deleted the background, promote the next one
+            if (scene.sources.length > 0 && !scene.sources[0].isBackground) {
+                scene.sources[0].isBackground = true;
+                scene.sources[0].width = document.getElementById('displayScreen').offsetWidth;
+                scene.sources[0].height = document.getElementById('displayScreen').offsetHeight;
+                scene.sources[0].left = 0;
+                scene.sources[0].top = 0;
+            }
+            
+            if (activeSource === index) activeSource = null;
+            else if (activeSource > index) activeSource--;
+            
+            saveData();
+            renderSources();
+            renderMedia();
+        }
+
+        function renderSources() {
+            const container = document.getElementById('sourcesList');
+            const scene = scenes[currentScene];
+            
+            if (!scene || scene.sources.length === 0) {
+                container.innerHTML = `<div style="text-align: center; color: #666; padding: 20px;"><div style="font-size: 30px;">🎬</div><div style="font-size: 11px;">No sources</div></div>`;
+                return;
+            }
+            
+            container.innerHTML = '';
+            scene.sources.forEach((source, index) => {
+                const key = getKeyForIndex(index);
+                const isMoving = source.moving;
+                const div = document.createElement('div');
+                div.className = 'source-item ' + 
+                               (index === activeSource ? 'active ' : '') + 
+                               (source.isBackground ? 'background ' : '');
+                div.onclick = () => selectSource(index);
+                
+                let controlsHtml = '';
+                if (!source.isBackground) {
+                    controlsHtml = `
+                        <button class="ctrl-btn ${isMoving ? 'active' : ''}" onclick="event.stopPropagation(); toggleMove(${index})">
+                            ${isMoving ? 'MOVING' : 'MOVE'}
+                        </button>
+                    `;
+                }
+
+                div.innerHTML = `
+                    <div class="source-number">${key}</div>
+                    <div class="source-info">
+                        <div class="source-name">${source.name} ${source.isBackground ? '<span class="bg-label">[BG]</span>' : ''}</div>
+                        <span class="source-type">${source.type}</span>
+                    </div>
+                    <div class="source-controls">
+                        <div class="visibility-toggle">
+                            <input type="checkbox" ${source.visible ? 'checked' : ''} onchange="toggleVisibility(${index}, event)" onclick="event.stopPropagation()" ${source.isBackground ? 'disabled' : ''}>
+                        </div>
+                        ${controlsHtml}
+                    </div>
+                    <button class="delete-btn" onclick="deleteSource(${index}, event)">×</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function selectSource(index) {
+            activeSource = index;
+            renderSources();
+            document.querySelectorAll('.media-overlay').forEach((el, i) => {
+                el.classList.toggle('active', parseInt(el.dataset.index) === index);
+            });
+        }
+
+        function toggleVisibility(index, event) {
+            event.stopPropagation();
+            const scene = scenes[currentScene];
+            if (scene.sources[index].isBackground) return;
+            scene.sources[index].visible = !scene.sources[index].visible;
+            saveData();
+            renderMedia();
+        }
+
+        function toggleMove(index) {
+            const scene = scenes[currentScene];
+            const source = scene.sources[index];
+            if (source.isBackground) return;
+            
+            source.moving = !source.moving;
+            renderSources();
+            saveData();
+        }
+
+        // --- Media Rendering ---
+        function renderMedia() {
+            const bgContainer = document.getElementById('backgroundContainer');
+            const overlayContainer = document.getElementById('overlayContainer');
+            const emptyState = document.getElementById('emptyState');
+            const scene = scenes[currentScene];
+            
+            bgContainer.innerHTML = '';
+            overlayContainer.innerHTML = '';
+            
+            if (!scene || scene.sources.length === 0) {
+                emptyState.style.display = 'flex';
+                return;
+            }
+            emptyState.style.display = 'none';
+
+            scene.sources.forEach((source, index) => {
+                if (!source.visible) return;
+
+                const overlay = document.createElement('div');
+                overlay.className = 'media-overlay ' + 
+                                   (index === activeSource ? 'active ' : '') + 
+                                   (source.isBackground ? 'background ' : '');
+                overlay.dataset.index = index;
+                overlay.style.width = source.width + 'px';
+                overlay.style.height = source.height + 'px';
+                overlay.style.left = source.left + 'px';
+                overlay.style.top = source.top + 'px';
+
+                if (source.type === 'video') {
+                    const video = document.createElement('video');
+                    video.src = source.url;
+                    video.loop = true;
+                    video.muted = true;
+                    video.autoplay = true;
+                    video.playsInline = true;
+                    
+                    if (source.isBackground) {
+                        video.style.pointerEvents = 'none';
+                    }
+                    
+                    overlay.appendChild(video);
+                } else {
+                    const img = document.createElement('img');
+                    img.src = source.url;
+                    img.alt = source.name;
+                    overlay.appendChild(img);
+                }
+
+                if (!source.isBackground) {
+                    ['n', 's', 'e', 'w', 'nw', 'ne', 'sw', 'se'].forEach(dir => {
+                        const handle = document.createElement('div');
+                        handle.className = 'overlay-handle ' + dir;
+                        handle.addEventListener('mousedown', (e) => { 
+                            e.stopPropagation(); 
+                            startOverlayResize(e, index, dir); 
+                        });
+                        overlay.appendChild(handle);
+                    });
+                    
+                    // Size Label
+                    const label = document.createElement('div');
+                    label.className = 'size-label';
+                    label.textContent = `${Math.round(source.width)} x ${Math.round(source.height)}`;
+                    overlay.appendChild(label);
+                }
+
+                overlay.addEventListener('mousedown', (e) => {
+                    if (e.target.classList.contains('overlay-handle')) return;
+                    
+                    if (source.isBackground) {
+                        selectSource(index);
+                    } else {
+                        startDrag(e, index);
+                    }
+                });
+
+                if (source.isBackground) bgContainer.appendChild(overlay);
+                else overlayContainer.appendChild(overlay);
+            });
+        }
+
+        // --- Animation Loop ---
+        function startAnimationLoop() {
+            function animate(currentTime) {
+                const deltaTime = currentTime - lastTime;
+                lastTime = currentTime;
+                const scene = scenes[currentScene];
+                if (scene) {
+                    const display = document.getElementById('displayScreen');
+                    const displayWidth = display.offsetWidth;
+
+                    scene.sources.forEach((source, index) => {
+                        if (source.isBackground || !source.visible || !source.moving) return;
+                        
+                        const moveAmount = (source.speed * deltaTime) / 16;
+                        source.left += moveAmount * source.direction;
+
+                        if (source.direction > 0 && source.left > displayWidth) {
+                            source.left = -source.width;
+                        } else if (source.direction < 0 && source.left < -source.width) {
+                            source.left = displayWidth;
+                        }
+
+                        const overlay = document.querySelector(`.media-overlay[data-index="${index}"]`);
+                        if (overlay) overlay.style.left = source.left + 'px';
+                    });
+                }
+                animationFrame = requestAnimationFrame(animate);
+            }
+            animationFrame = requestAnimationFrame(animate);
+        }
+        
+        startAnimationLoop();
+
+        // --- Drag & Resize Logic ---
+        function startDrag(e, index) {
+            e.preventDefault();
+            isDragging = true;
+            selectSource(index);
+            
+            const scene = scenes[currentScene];
+            const source = scene.sources[index];
+            
+            const rect = e.target.getBoundingClientRect();
+            dragOffsetX = e.clientX - rect.left;
+            dragOffsetY = e.clientY - rect.top;
+
+            const overlay = document.querySelector(`.media-overlay[data-index="${index}"]`);
+            if (overlay) overlay.style.cursor = 'grabbing';
+            
+            const moveHandler = (e) => {
+                if (!isDragging) return;
+                const displayRect = document.getElementById('displayScreen').getBoundingClientRect();
+                
+                let newLeft = e.clientX - displayRect.left - dragOffsetX;
+                let newTop = e.clientY - displayRect.top - dragOffsetY;
+
+                source.left = newLeft;
+                source.top = newTop;
+
+                if (overlay) {
+                    overlay.style.left = newLeft + 'px';
+                    overlay.style.top = newTop + 'px';
+                }
+            };
+
+            const upHandler = () => {
+                isDragging = false;
+                document.removeEventListener('mousemove', moveHandler);
+                document.removeEventListener('mouseup', upHandler);
+                if (overlay) overlay.style.cursor = 'grab';
+                saveData(); // Auto-save on drag end
+            };
+
+            document.addEventListener('mousemove', moveHandler);
+            document.addEventListener('mouseup', upHandler);
+        }
+
+        function startOverlayResize(e, index, handle) {
+            e.preventDefault();
+            const scene = scenes[currentScene];
+            const source = scene.sources[index];
+            
+            const startX = e.clientX; 
+            const startY = e.clientY;
+            const startWidth = source.width; 
+            const startHeight = source.height;
+            const startLeft = source.left; 
+            const startTop = source.top;
+            
+            const overlay = document.querySelector(`.media-overlay[data-index="${index}"]`);
+            const label = overlay.querySelector('.size-label');
+            if (overlay) overlay.classList.add('resizing');
+
+            const resizeHandler = (e) => {
+                const dx = e.clientX - startX; 
+                const dy = e.clientY - startY;
+                let newW = startWidth, newH = startHeight, newL = startLeft, newT = startTop;
+
+                if (handle.includes('e')) newW = startWidth + dx;
+                else if (handle.includes('w')) { newW = startWidth - dx; newL = startLeft + dx; }
+
+                if (handle.includes('s')) newH = startHeight + dy;
+                else if (handle.includes('n')) { newH = startHeight - dy; newT = startTop + dy; }
+
+                newW = Math.max(50, newW); newH = Math.max(50, newH);
+                source.width = newW; source.height = newH; source.left = newL; source.top = newT;
+
+                if (overlay) {
+                    overlay.style.width = newW + 'px'; overlay.style.height = newH + 'px';
+                    overlay.style.left = newL + 'px'; overlay.style.top = newT + 'px';
+                    if(label) label.textContent = `${Math.round(newW)} x ${Math.round(newH)}`;
+                }
+            };
+
+            const upHandler = () => {
+                document.removeEventListener('mousemove', resizeHandler);
+                document.removeEventListener('mouseup', upHandler);
+                if (overlay) overlay.classList.remove('resizing');
+                saveData(); // Auto-save on resize end
+            };
+            document.addEventListener('mousemove', resizeHandler);
+            document.addEventListener('mouseup', upHandler);
+        }
+
+        function setupGlobalMouseHandlers() {
+            document.getElementById('backgroundContainer').addEventListener('mousedown', (e) => {
+                if (e.target.id === 'backgroundContainer') {
+                    activeSource = null;
+                    renderSources();
+                    document.querySelectorAll('.media-overlay').forEach(el => el.classList.remove('active'));
+                }
+            });
+            document.getElementById('overlayContainer').addEventListener('mousedown', (e) => {
+                if (e.target.id === 'overlayContainer') {
+                    activeSource = null;
+                    renderSources();
+                    document.querySelectorAll('.media-overlay').forEach(el => el.classList.remove('active'));
+                }
+            });
+        }
+
+        // --- Keyboard Shortcuts ---
+        function setupKeyboardShortcuts() {
+            document.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT') return;
+                
+                const key = e.key.toUpperCase();
+                
+                if (e.code === 'Space') { e.preventDefault(); playAll(); return; }
+                if (key === 'P') { pauseAll(); return; }
+                if (key === 'S') { stopAll(); return; }
+
+                if (e.key === 'Delete' && activeSource !== null) {
+                    deleteSource(activeSource, { stopPropagation: () => {} });
+                }
+            });
+        }
+
+        // --- Global Actions ---
+        function showAllSources() { toggleAll(true); }
+        function hideAllSources() { toggleAll(false); }
+        function toggleAll(visible) {
+            const scene = scenes[currentScene];
+            scene.sources.forEach(s => { if (!s.isBackground) s.visible = visible; });
+            saveData(); renderSources(); renderMedia();
+        }
+
+        function resetAllPositions() {
+            const scene = scenes[currentScene];
+            const display = document.getElementById('displayScreen');
+            scene.sources.forEach((s, i) => {
+                if (s.isBackground) {
+                    s.width = display.offsetWidth; s.height = display.offsetHeight; s.left = 0; s.top = 0;
+                } else {
+                    s.width = 200; s.height = 200;
+                    const pos = getCenterPosition(s.width, s.height);
+                    s.left = pos.left; s.top = pos.top;
+                    s.moving = false;
+                }
+            });
+            saveData(); renderSources(); renderMedia();
+        }
+
+        function playAll() { 
+            document.querySelectorAll('.media-overlay video').forEach(v => { v.muted = false; v.play(); }); 
+            updateStatus('Playing'); 
+        }
+        function pauseAll() { 
+            document.querySelectorAll('.media-overlay video').forEach(v => v.pause()); 
+            updateStatus('Paused'); 
+        }
+        function stopAll() { 
+            document.querySelectorAll('.media-overlay video').forEach(v => { v.pause(); v.currentTime = 0; }); 
+            updateStatus('Stopped'); 
+        }
+
+        function updateStatus(msg) {
+            const status = document.getElementById('statusText');
+            if (msg) { 
+                status.textContent = msg; 
+                setTimeout(() => updateStatus(), 2000); 
+            }
+            else {
+                const scene = scenes[currentScene];
+                if (!scene) return;
+                const moving = scene.sources.filter(s => s.moving && !s.isBackground).length;
+                status.textContent = `${scene.name} - ${scene.sources.length} sources ${moving > 0 ? '(' + moving + ' moving)' : ''}`;
+            }
+        }
+        
+        document.getElementById('sceneModal').addEventListener('click', (e) => { if (e.target.id === 'sceneModal') closeModal(); });
+    </script>
+</body>
+</html>
+
